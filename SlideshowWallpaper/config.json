@@ -1,5 +1,5 @@
 {
-  "interval": 5.0,
+  "interval": 10.0,
   "shuffle": false,
   "loop": true,
   "videoPlaybackSpeed": 1.0

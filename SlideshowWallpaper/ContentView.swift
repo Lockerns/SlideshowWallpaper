@@ -3,12 +3,16 @@ import AVKit
 
 struct ContentView: View {
     @EnvironmentObject var viewModel: SlideshowViewModel
+    
     @State private var showControls: Bool = true
-
+    @State private var inactivityTask: Task<Void, Never>?
+    
+    private let inactivityTimeout: TimeInterval = 4.0
+    
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-
+            
             if let item = viewModel.currentItem() {
                 switch item {
                 case .image(let url):
@@ -16,11 +20,11 @@ struct ContentView: View {
                         .transition(.opacity)
                         .animation(.easeInOut(duration: 0.6), value: viewModel.currentIndex)
                 case .video(let url):
-                    AVPlayerContainerView(url: url, playbackSpeed: viewModel.currentVideoPlaybackSpeed(), onFinish: {
-                        viewModel.videoDidFinish()
-                    })
-                    .transition(.opacity)
-                    .animation(.easeInOut(duration: 0.6), value: viewModel.currentIndex)
+                    AVPlayerContainerView(url: url,
+                                          playbackSpeed: viewModel.currentVideoPlaybackSpeed(),
+                                          onFinish: { viewModel.videoDidFinish() })
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.6), value: viewModel.currentIndex)
                 }
             } else {
                 Text("No media found. Click Open Folder to choose a folder with images/videos.")
@@ -28,8 +32,8 @@ struct ContentView: View {
                     .multilineTextAlignment(.center)
                     .padding()
             }
-
-            // Controls overlay
+            
+            // 控制按钮层
             VStack {
                 HStack {
                     Spacer()
@@ -54,27 +58,59 @@ struct ContentView: View {
                 Spacer()
             }
             .foregroundColor(.white)
+            .cornerRadius(12)
             .padding()
+            .opacity(showControls ? 1 : 0)
+            .animation(.easeInOut(duration: 0.3), value: showControls)
+            // 点击任意位置都重新显示控制栏
+            .contentShape(Rectangle())
+            .onTapGesture {
+                restartInactivityTimer()
+            }
+        }
+        // 鼠标悬停检测（macOS）
+        .onHover { isHovering in
+            if isHovering {
+                showControls = true
+                restartInactivityTimer()
+            } else {
+                restartInactivityTimer()   // 鼠标离开后也开始计时隐藏
+            }
         }
         .onAppear {
-            // intentionally empty
+            restartInactivityTimer()
         }
     }
-
+    
+    // MARK: - 打开文件夹
     func openFolder() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.begin { resp in
-            if resp == .OK, let url = panel.url {
-                viewModel.openFolder(url)
+        if panel.runModal() == .OK, let url = panel.url {
+            viewModel.openFolder(url)
+        }
+    }
+    
+    // MARK: - 自动隐藏控制栏的核心逻辑
+    private func restartInactivityTimer() {
+        inactivityTask?.cancel()
+        showControls = true
+        inactivityTask = Task { @MainActor in
+            do {
+                try await Task.sleep(for: .seconds(inactivityTimeout))
+                if !Task.isCancelled {
+                    withAnimation {
+                        showControls = false
+                    }
+                }
+            } catch {
             }
         }
     }
 }
 
-// Simple image view that scales proportionally and supports pinch zoom via MagnificationGesture
 struct ZoomableImageView: View {
     let imageURL: URL
     @State private var scale: CGFloat = 1.0
@@ -102,3 +138,4 @@ struct ZoomableImageView: View {
         }
     }
 }
+
