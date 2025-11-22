@@ -40,7 +40,7 @@ class SlideshowViewModel: ObservableObject {
     private var config = SlideshowConfig()
 
     init() {
-        // no-op
+        SleepPreventer.shared.preventSleep()
     }
 
     func openFolder(_ url: URL) {
