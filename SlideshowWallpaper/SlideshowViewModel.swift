@@ -34,6 +34,7 @@ class SlideshowViewModel: ObservableObject {
     @Published var isPlaying: Bool = true
 
     private var folderURL: URL?
+    private var securityScopedURL: URL?
     private var folderDescriptor: CInt = -1
     private var folderSource: DispatchSourceFileSystemObject?
     private var timerCancellable: AnyCancellable?
@@ -41,11 +42,39 @@ class SlideshowViewModel: ObservableObject {
 
     init() {
         SleepPreventer.shared.preventSleep()
+        restoreLastOpenedFolder()
+    }
+
+    private func restoreLastOpenedFolder() {
+        if let data = UserDefaults.standard.data(forKey: "LastOpenedFolderBookmark") {
+            var isStale = false
+            do {
+                let url = try URL(resolvingBookmarkData: data, options: .withSecurityScope, relativeTo: nil, bookmarkDataIsStale: &isStale)
+                if url.startAccessingSecurityScopedResource() {
+                    securityScopedURL = url
+                    openFolder(url)
+                }
+            } catch {
+                print("Failed to restore bookmark: \(error)")
+            }
+        }
     }
 
     func openFolder(_ url: URL) {
+        if let old = securityScopedURL, old != url {
+            old.stopAccessingSecurityScopedResource()
+            securityScopedURL = nil
+        }
         stopWatching()
         folderURL = url
+        
+        do {
+            let data = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+            UserDefaults.standard.set(data, forKey: "LastOpenedFolderBookmark")
+        } catch {
+            print("Failed to save bookmark: \(error)")
+        }
+        
         loadConfigIfExists()
         reloadItems()
         startWatching()
